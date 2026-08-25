@@ -22,14 +22,35 @@ describe('LoginScreen', () => {
   });
 
   it('starts in login mode with accessible email and password fields', () => {
-    render(<LoginScreen />);
+    const { container } = render(<LoginScreen />);
 
     expect(screen.getByRole('heading', { name: '纸片人男友' })).toBeInTheDocument();
-    expect(screen.getByLabelText('邮箱')).toBeInTheDocument();
-    expect(screen.getByLabelText('密码')).toBeInTheDocument();
+    expect(screen.getByLabelText('邮箱')).toHaveAttribute('autocomplete', 'email');
+    expect(screen.getByLabelText('密码')).toHaveAttribute('autocomplete', 'current-password');
     expect(screen.queryByLabelText('确认密码')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '还没有账号？立即注册' })).toBeInTheDocument();
+    expect(container.querySelector('form')).toHaveAttribute('novalidate');
+  });
+
+  it('renders the approved gradient and card design without excluded auth UI', () => {
+    const { container } = render(<LoginScreen />);
+
+    expect(container.querySelector('main')).toHaveClass(
+      'bg-gradient-to-br',
+      'from-pink-100',
+      'via-rose-100',
+      'to-fuchsia-200',
+    );
+    expect(container.querySelector('section')).toHaveClass(
+      'max-w-sm',
+      'rounded-3xl',
+      'bg-white/90',
+    );
+    expect(screen.queryByText(/昵称/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/忘记密码/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/微信|QQ|Google|社交账号/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/邮箱验证|验证邮件|查收邮件/)).not.toBeInTheDocument();
   });
 
   it('switches to registration mode and exposes password confirmation', async () => {
@@ -38,7 +59,8 @@ describe('LoginScreen', () => {
 
     await user.click(screen.getByRole('button', { name: '还没有账号？立即注册' }));
 
-    expect(screen.getByLabelText('确认密码')).toBeInTheDocument();
+    expect(screen.getByLabelText('密码')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByLabelText('确认密码')).toHaveAttribute('autocomplete', 'new-password');
     expect(screen.getByRole('button', { name: '注册' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '已有账号？返回登录' })).toBeInTheDocument();
   });
@@ -59,6 +81,27 @@ describe('LoginScreen', () => {
     expect(screen.getByLabelText('邮箱')).toHaveValue('person@example.com');
     expect(screen.getByLabelText('密码')).toHaveValue('');
     expect(screen.queryByLabelText('确认密码')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '还没有账号？立即注册' }));
+    expect(screen.getByLabelText('密码')).toHaveValue('');
+    expect(screen.getByLabelText('确认密码')).toHaveValue('');
+  });
+
+  it('clears the password and validation error when switching to registration', async () => {
+    const user = userEvent.setup();
+    render(<LoginScreen />);
+
+    await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
+    await user.type(screen.getByLabelText('密码'), 'short');
+    await user.click(screen.getByRole('button', { name: '登录' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('密码至少需要 8 位');
+
+    await user.click(screen.getByRole('button', { name: '还没有账号？立即注册' }));
+
+    expect(screen.getByLabelText('邮箱')).toHaveValue('person@example.com');
+    expect(screen.getByLabelText('密码')).toHaveValue('');
+    expect(screen.getByLabelText('确认密码')).toHaveValue('');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -144,7 +187,7 @@ describe('LoginScreen', () => {
       () => new Promise<void>((resolve) => { resolveLogin = resolve; }),
     );
     const user = userEvent.setup();
-    render(<LoginScreen />);
+    const { container } = render(<LoginScreen />);
 
     await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
     await user.type(screen.getByLabelText('密码'), 'password123');
@@ -152,6 +195,7 @@ describe('LoginScreen', () => {
     await user.click(submit);
 
     expect(screen.getByRole('button', { name: '登录中...' })).toBeDisabled();
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
     expect(screen.getByLabelText('邮箱')).toBeDisabled();
     expect(screen.getByLabelText('密码')).toBeDisabled();
     expect(screen.getByRole('button', { name: '还没有账号？立即注册' })).toBeDisabled();
