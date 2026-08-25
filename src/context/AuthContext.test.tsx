@@ -74,6 +74,17 @@ describe('AuthProvider', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  it('ends loading when an auth change arrives before the initial request completes', () => {
+    auth.getUser.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    const callback = auth.onAuthStateChange.mock.calls[0][0];
+
+    act(() => callback('SIGNED_IN', session));
+
+    expect(result.current.user).toBe(user);
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it('logs in with the exact credentials', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
