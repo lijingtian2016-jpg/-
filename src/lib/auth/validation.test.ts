@@ -31,6 +31,12 @@ describe("validateAuthForm", () => {
       null,
     );
   });
+
+  it("accepts a valid email address with surrounding spaces", () => {
+    expect(
+      validateAuthForm("login", "  user@example.com  ", "password123"),
+    ).toBe(null);
+  });
 });
 
 describe("mapAuthError", () => {
@@ -38,6 +44,9 @@ describe("mapAuthError", () => {
     ["Invalid login credentials", "邮箱或密码错误"],
     ["User already registered", "该邮箱已经注册，请直接登录"],
     ["Email rate limit exceeded", "操作过于频繁，请稍后再试"],
+    ["Password is too weak", "密码不符合安全要求"],
+    ["Failed to fetch", "网络异常，请稍后重试"],
+    ["Network request failed", "网络异常，请稍后重试"],
     ["Something unexpected happened", "操作失败，请稍后重试"],
   ])("maps %s to a user-friendly message", (message, expected) => {
     expect(mapAuthError(message)).toBe(expected);

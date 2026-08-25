@@ -8,7 +8,7 @@ export function validateAuthForm(
   password: string,
   confirmPassword = "",
 ): string | null {
-  if (!EMAIL_PATTERN.test(email)) {
+  if (!EMAIL_PATTERN.test(email.trim())) {
     return "请输入有效的邮箱地址";
   }
 
@@ -39,14 +39,14 @@ export function mapAuthError(message: string): string {
   }
 
   if (normalizedMessage.includes("password")) {
-    return "密码至少需要 8 位";
+    return "密码不符合安全要求";
   }
 
   if (
     normalizedMessage.includes("fetch") ||
     normalizedMessage.includes("network")
   ) {
-    return "网络连接失败，请稍后重试";
+    return "网络异常，请稍后重试";
   }
 
   return "操作失败，请稍后重试";
