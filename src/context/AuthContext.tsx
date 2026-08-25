@@ -1,81 +1,93 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
+import type { User } from '@supabase/supabase-js';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-// Define the shape of the user object
-interface User {
-  name: string;
-}
+import { createClient } from '@/lib/supabase/client';
 
-// Define the shape of the context
 interface AuthContextType {
   user: User | null;
-  login: (name: string) => void;
-  logout: () => void;
   isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
-// Create the context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Define the key for localStorage
-const USER_STORAGE_KEY = 'ai_boyfriend_user';
-
-// Create the provider component
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // To handle initial check
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Check for saved user on initial load
   useEffect(() => {
-    try {
-      const savedUserJson = localStorage.getItem(USER_STORAGE_KEY);
-      if (savedUserJson) {
-        const savedUser = JSON.parse(savedUserJson);
-        setUser(savedUser);
-      }
-    } catch (error) {
-      console.error('Failed to parse user from localStorage', error);
-      // Clear corrupted data
-      localStorage.removeItem(USER_STORAGE_KEY);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    let mounted = true;
 
-  const login = useCallback((name: string) => {
-    const newUser: User = { name };
-    try {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
-      setUser(newUser);
-    } catch (error) {
-      console.error('Failed to save user to localStorage', error);
-    }
-  }, []);
+    void supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (mounted) setUser(data.user);
+      })
+      .catch(() => {
+        if (mounted) setUser(null);
+      })
+      .finally(() => {
+        if (mounted) setIsLoading(false);
+      });
 
-  const logout = useCallback(() => {
-    try {
-      localStorage.removeItem(USER_STORAGE_KEY);
-      setUser(null);
-    } catch (error) {
-      console.error('Failed to remove user from localStorage', error);
-    }
-  }, []);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setUser(session?.user ?? null);
+    });
 
-  const value = { user, login, logout, isLoading };
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    },
+    [supabase],
   );
-};
 
-// Create a custom hook for easy access to the context
-export const useAuth = () => {
+  const register = useCallback(
+    async (email: string, password: string) => {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+    },
+    [supabase],
+  );
+
+  const logout = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  }, [supabase]);
+
+  const value = useMemo(
+    () => ({ user, isLoading, login, register, logout }),
+    [user, isLoading, login, register, logout],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+}
