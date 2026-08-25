@@ -43,7 +43,7 @@ describe('LogoutButton', () => {
     expect(button).toBeEnabled();
   });
 
-  it('becomes usable again when logout rejects without an unhandled rejection', async () => {
+  it('shows generic feedback after failure and clears it when retrying', async () => {
     const user = userEvent.setup();
     logout.mockRejectedValueOnce(new Error('private provider detail'));
     render(<LogoutButton />);
@@ -52,8 +52,11 @@ describe('LogoutButton', () => {
     await user.click(button);
 
     expect(button).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('退出失败，请稍后重试');
+    expect(screen.queryByText('private provider detail')).not.toBeInTheDocument();
 
     await user.click(button);
     expect(logout).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
