@@ -21,6 +21,14 @@ const user = { id: 'user-1', email: 'ada@example.com' } as User;
 const session = { user, access_token: 'token' } as Session;
 const unsubscribe = vi.fn();
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   return <AuthProvider>{children}</AuthProvider>;
 }
@@ -82,6 +90,32 @@ describe('AuthProvider', () => {
     act(() => callback('SIGNED_IN', session));
 
     expect(result.current.user).toBe(user);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('keeps a signed-in user when the initial request later returns no user', async () => {
+    const initialUser = deferred<{ data: { user: User | null }; error: null }>();
+    auth.getUser.mockReturnValue(initialUser.promise);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    const callback = auth.onAuthStateChange.mock.calls[0][0];
+
+    act(() => callback('SIGNED_IN', session));
+    await act(async () => initialUser.resolve({ data: { user: null }, error: null }));
+
+    expect(result.current.user).toBe(user);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('keeps an anonymous state when the initial request later returns a stale user', async () => {
+    const initialUser = deferred<{ data: { user: User | null }; error: null }>();
+    auth.getUser.mockReturnValue(initialUser.promise);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    const callback = auth.onAuthStateChange.mock.calls[0][0];
+
+    act(() => callback('SIGNED_OUT', null));
+    await act(async () => initialUser.resolve({ data: { user }, error: null }));
+
+    expect(result.current.user).toBeNull();
     expect(result.current.isLoading).toBe(false);
   });
 

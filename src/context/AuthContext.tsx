@@ -30,14 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let authEventOccurred = false;
 
     void supabase.auth
       .getUser()
       .then(({ data }) => {
-        if (mounted) setUser(data.user);
+        if (mounted && !authEventOccurred) setUser(data.user);
       })
       .catch(() => {
-        if (mounted) setUser(null);
+        if (mounted && !authEventOccurred) setUser(null);
       })
       .finally(() => {
         if (mounted) setIsLoading(false);
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted) {
+        authEventOccurred = true;
         setUser(session?.user ?? null);
         setIsLoading(false);
       }
