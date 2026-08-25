@@ -24,6 +24,9 @@ pnpm-debug.log*
 # vercel
 .vercel
 
+# isolated development worktrees
+.worktrees/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
