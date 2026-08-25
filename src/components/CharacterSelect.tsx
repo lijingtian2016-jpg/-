@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { characters } from '@/data/characters';
 import { Character } from '@/types/chat';
+import { LogoutButton } from './LogoutButton';
 
 interface CharacterSelectProps {
   onSelectCharacter: (character: Character) => void;
@@ -10,7 +11,8 @@ interface CharacterSelectProps {
 
 export const CharacterSelect = ({ onSelectCharacter }: CharacterSelectProps) => {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-pink-100 to-pink-200 p-4 font-sans">
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-pink-100 to-pink-200 p-4 font-sans">
+      <LogoutButton className="absolute right-4 top-4" />
       <h1 className="text-4xl font-bold text-gray-800 mb-2">选择你的纸片人男友</h1>
       <p className="text-gray-600 mb-8">点击卡片开始聊天</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">

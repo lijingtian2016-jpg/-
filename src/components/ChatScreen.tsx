@@ -5,6 +5,7 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { useState, useRef, useEffect } from 'react';
 import { TypingIndicator } from './TypingIndicator';
+import { LogoutButton } from './LogoutButton';
 
 export const ChatScreen = () => {
   const { chatState, sendMessage, resetChat } = useChat();
@@ -51,6 +52,7 @@ export const ChatScreen = () => {
             <h2 className="text-base font-semibold text-black dark:text-white">{character.name}</h2>
             <p className="text-xs text-green-600">{isTyping ? '正在输入...' : '在线'}</p>
           </div>
+          <LogoutButton className="absolute right-3" />
         </header>
 
         <main className="flex-1 p-4 overflow-y-auto">
