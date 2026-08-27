@@ -138,14 +138,17 @@ describe('AuthProvider', () => {
     await expect(result.current.login('ada@example.com', 'wrong')).rejects.toBe(error);
   });
 
-  it('registers with the exact credentials', async () => {
+  it('registers with the exact credentials and CAPTCHA token', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
-    await act(() => result.current.register('ada@example.com', 'new password'));
+    await act(() =>
+      result.current.register('ada@example.com', 'new password', 'captcha-token'),
+    );
 
     expect(auth.signUp).toHaveBeenCalledWith({
       email: 'ada@example.com',
       password: 'new password',
+      options: { captchaToken: 'captcha-token' },
     });
   });
 
@@ -154,7 +157,9 @@ describe('AuthProvider', () => {
     auth.signUp.mockResolvedValue({ data: {}, error });
     const { result } = renderHook(() => useAuth(), { wrapper });
 
-    await expect(result.current.register('ada@example.com', 'password')).rejects.toBe(error);
+    await expect(
+      result.current.register('ada@example.com', 'password', 'captcha-token'),
+    ).rejects.toBe(error);
   });
 
   it('logs out', async () => {
