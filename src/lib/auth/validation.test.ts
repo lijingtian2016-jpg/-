@@ -44,6 +44,8 @@ describe("mapAuthError", () => {
     ["Invalid login credentials", "邮箱或密码错误"],
     ["User already registered", "该邮箱已经注册，请直接登录"],
     ["Email rate limit exceeded", "操作过于频繁，请稍后再试"],
+    ["Captcha verification process failed", "人机验证失败，请重试"],
+    ["captcha protection: request disallowed", "人机验证失败，请重试"],
     ["Password is too weak", "密码不符合安全要求"],
     ["Failed to fetch", "网络异常，请稍后重试"],
     ["Network request failed", "网络异常，请稍后重试"],

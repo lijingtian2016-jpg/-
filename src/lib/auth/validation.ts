@@ -38,6 +38,10 @@ export function mapAuthError(message: string): string {
     return "操作过于频繁，请稍后再试";
   }
 
+  if (normalizedMessage.includes("captcha")) {
+    return "人机验证失败，请重试";
+  }
+
   if (normalizedMessage.includes("password")) {
     return "密码不符合安全要求";
   }
