@@ -208,6 +208,8 @@ describe('LoginScreen', () => {
     await user.click(screen.getByRole('button', { name: '注册' }));
 
     expect(authMocks.register).toHaveBeenCalledWith('person@example.com', ' password123 ', 'exact-test-token');
+    expect(turnstileMocks.reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '注册' })).toBeDisabled();
   });
 
   it.each([
