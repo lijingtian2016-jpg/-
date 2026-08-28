@@ -1,7 +1,8 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 
 import { useAuth } from '@/context/AuthContext';
 import { type AuthMode, mapAuthError, validateAuthForm } from '@/lib/auth/validation';
@@ -17,13 +18,21 @@ export const LoginScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   const switchMode = () => {
     if (isSubmitting) return;
-    setMode((currentMode) => (currentMode === 'login' ? 'register' : 'login'));
+    const nextMode: AuthMode = mode === 'login' ? 'register' : 'login';
+    turnstileRef.current?.reset();
+    setCaptchaToken(null);
+    setMode(nextMode);
+    setError(nextMode === 'register' && !turnstileSiteKey
+      ? '人机验证暂不可用，请稍后重试'
+      : null);
     setPassword('');
     setConfirmPassword('');
-    setError(null);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -36,18 +45,29 @@ export const LoginScreen = () => {
       return;
     }
 
+    const registrationToken = captchaToken;
+    if (mode === 'register' && !registrationToken) {
+      setError('请完成人机验证');
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
     try {
       if (mode === 'login') {
         await login(email.trim(), password);
       } else {
-        await register(email.trim(), password);
+        if (!registrationToken) return;
+        await register(email.trim(), password, registrationToken);
       }
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : '';
       setError(mapAuthError(message));
     } finally {
+      if (mode === 'register') {
+        setCaptchaToken(null);
+        turnstileRef.current?.reset();
+      }
       setIsSubmitting(false);
     }
   };
@@ -98,8 +118,28 @@ export const LoginScreen = () => {
 
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
 
+          {!isLogin && turnstileSiteKey && (
+            <Turnstile
+              onError={() => {
+                setCaptchaToken(null);
+                setError('验证失败，请重试');
+              }}
+              onExpire={() => {
+                setCaptchaToken(null);
+                setError('验证已失效，请重试');
+              }}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setError(null);
+              }}
+              options={{ language: 'zh-CN', size: 'flexible', theme: 'light' }}
+              ref={turnstileRef}
+              siteKey={turnstileSiteKey}
+            />
+          )}
+
           <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-fuchsia-500 px-4 py-3 font-semibold text-white shadow-md shadow-rose-200 transition hover:from-rose-600 hover:to-fuchsia-600 focus:outline-none focus:ring-2 focus:ring-fuchsia-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isSubmitting} type="submit">
+            disabled={isSubmitting || (!isLogin && (!captchaToken || !turnstileSiteKey))} type="submit">
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             {submitLabel}
           </button>
