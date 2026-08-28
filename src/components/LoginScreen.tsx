@@ -45,6 +45,11 @@ export const LoginScreen = () => {
       return;
     }
 
+    if (mode === 'register' && !turnstileSiteKey) {
+      setError('人机验证暂不可用，请稍后重试');
+      return;
+    }
+
     const registrationToken = captchaToken;
     if (mode === 'register' && !registrationToken) {
       setError('请完成人机验证');

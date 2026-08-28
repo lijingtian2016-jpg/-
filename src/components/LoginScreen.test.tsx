@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -237,6 +237,21 @@ describe('LoginScreen', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('人机验证暂不可用，请稍后重试');
     expect(screen.queryByTestId('turnstile')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '注册' })).toBeDisabled();
+  });
+
+  it('keeps the configuration alert when an unconfigured registration form is submitted directly', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', '');
+    const user = userEvent.setup();
+    const { container } = render(<LoginScreen />);
+
+    await user.click(screen.getByRole('button', { name: '还没有账号？立即注册' }));
+    await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
+    await user.type(screen.getByLabelText('密码'), 'password123');
+    await user.type(screen.getByLabelText('确认密码'), 'password123');
+    fireEvent.submit(container.querySelector('form')!);
+
+    expect(authMocks.register).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('人机验证暂不可用，请稍后重试');
   });
 
   it('resets and consumes the token after a registration attempt', async () => {
