@@ -115,6 +115,7 @@ describe('LoginScreen', () => {
 
     await user.click(screen.getByRole('button', { name: '已有账号？返回登录' }));
 
+    expect(turnstileMocks.reset).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText('邮箱')).toHaveValue('person@example.com');
     expect(screen.getByLabelText('密码')).toHaveValue('');
     expect(screen.queryByLabelText('确认密码')).not.toBeInTheDocument();
@@ -123,6 +124,7 @@ describe('LoginScreen', () => {
     await user.click(screen.getByRole('button', { name: '还没有账号？立即注册' }));
     expect(screen.getByLabelText('密码')).toHaveValue('');
     expect(screen.getByLabelText('确认密码')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '注册' })).toBeDisabled();
   });
 
   it('clears the password and validation error when switching to registration', async () => {
