@@ -21,6 +21,16 @@ async function expectArkError(
   });
 }
 
+describe("ArkImageError", () => {
+  it("uses its code as its message and exposes its identity", () => {
+    const error = new ArkImageError("timeout");
+
+    expect(error.message).toBe("timeout");
+    expect(error.code).toBe("timeout");
+    expect(error.name).toBe("ArkImageError");
+  });
+});
+
 describe("generateImageWithArk", () => {
   beforeEach(() => {
     process.env.ARK_API_KEY = "secret-test-key";
@@ -67,6 +77,20 @@ describe("generateImageWithArk", () => {
     });
   });
 
+  it("posts to a configured Ark API URL", async () => {
+    process.env.ARK_IMAGE_API_URL = "https://ark.example/custom-images";
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      response(200, { data: [{ url: "https://temporary.example/image.png" }] }),
+    );
+
+    await generateImageWithArk("prompt", { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://ark.example/custom-images",
+      expect.any(Object),
+    );
+  });
+
   it.each(["ARK_API_KEY", "ARK_IMAGE_MODEL"])(
     "reports configuration when %s is missing",
     async (name) => {
@@ -78,7 +102,7 @@ describe("generateImageWithArk", () => {
     },
   );
 
-  it.each(["0", "-1", "not-a-number", "Infinity"])(
+  it.each(["", "0", "-1", "not-a-number", "Infinity"])(
     "reports configuration for invalid timeout %s",
     async (timeout) => {
       process.env.ARK_IMAGE_TIMEOUT_MS = timeout;

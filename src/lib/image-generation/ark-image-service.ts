@@ -9,11 +9,8 @@ export type ArkImageErrorCode =
 export class ArkImageError extends Error {
   public readonly name = "ArkImageError";
 
-  public constructor(
-    public readonly code: ArkImageErrorCode,
-    message: string,
-  ) {
-    super(message);
+  public constructor(public readonly code: ArkImageErrorCode) {
+    super(code);
   }
 }
 
@@ -39,22 +36,15 @@ export async function generateImageWithArk(
   const model = process.env.ARK_IMAGE_MODEL;
 
   if (!apiKey || !model) {
-    throw new ArkImageError(
-      "configuration",
-      "Ark image generation is not configured",
-    );
+    throw new ArkImageError("configuration");
   }
 
-  const configuredTimeout = process.env.ARK_IMAGE_TIMEOUT_MS;
-  const timeoutMs = configuredTimeout
-    ? Number(configuredTimeout)
-    : DEFAULT_TIMEOUT_MS;
+  const timeoutMs = Number(
+    process.env.ARK_IMAGE_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS),
+  );
 
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new ArkImageError(
-      "configuration",
-      "Ark image generation timeout is invalid",
-    );
+    throw new ArkImageError("configuration");
   }
 
   const controller = new AbortController();
@@ -87,16 +77,13 @@ export async function generateImageWithArk(
           : response.status === 429
             ? "rate_limited"
             : "upstream_failure";
-      throw new ArkImageError(code, "Ark image generation request failed");
+      throw new ArkImageError(code);
     }
 
     const payload: unknown = await response.json();
     const temporaryUrl = getTemporaryUrl(payload);
     if (!temporaryUrl) {
-      throw new ArkImageError(
-        "invalid_response",
-        "Ark image generation returned an invalid response",
-      );
+      throw new ArkImageError("invalid_response");
     }
 
     return { temporaryUrl, provider: "volcengine-ark", model };
@@ -105,12 +92,9 @@ export async function generateImageWithArk(
       throw error;
     }
     if (isAbortError(error)) {
-      throw new ArkImageError("timeout", "Ark image generation timed out");
+      throw new ArkImageError("timeout");
     }
-    throw new ArkImageError(
-      "upstream_failure",
-      "Ark image generation request failed",
-    );
+    throw new ArkImageError("upstream_failure");
   } finally {
     clearTimeout(timeout);
   }
