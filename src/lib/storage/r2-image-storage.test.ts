@@ -270,14 +270,15 @@ describe("createR2ImageStorage", () => {
     expect(awsMocks.send).not.toHaveBeenCalled();
   });
 
-  it("enforces the size limit when a response has no readable stream", async () => {
+  it("rejects a response without a readable stream before allocating its body", async () => {
+    const arrayBuffer = vi
+      .fn()
+      .mockResolvedValue(new Uint8Array(10 * 1024 * 1024 + 1).buffer);
     const response = {
       ok: true,
       headers: new Headers({ "content-type": "image/png" }),
       body: null,
-      arrayBuffer: vi
-        .fn()
-        .mockResolvedValue(new Uint8Array(10 * 1024 * 1024 + 1).buffer),
+      arrayBuffer,
     } as unknown as Response;
     const storage = createR2ImageStorage({
       fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
@@ -285,8 +286,9 @@ describe("createR2ImageStorage", () => {
 
     await expectR2Error(
       storage.persistTemporaryImage(validTemporaryUrl, "user-1"),
-      "too_large",
+      "download_failed",
     );
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it.each([

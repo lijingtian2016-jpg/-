@@ -53,16 +53,7 @@ function isAllowedTemporaryImageUrl(value: string): boolean {
 
 async function readBoundedBody(response: Response): Promise<Buffer> {
   if (!response.body) {
-    let body: Buffer;
-    try {
-      body = Buffer.from(await response.arrayBuffer());
-    } catch {
-      throw new R2ImageError("download_failed");
-    }
-    if (body.byteLength > MAX_IMAGE_BYTES) {
-      throw new R2ImageError("too_large");
-    }
-    return body;
+    throw new R2ImageError("download_failed");
   }
 
   const reader = response.body.getReader();
