@@ -30,9 +30,16 @@ import { createR2ImageStorage, R2ImageError } from "./r2-image-storage";
 const originalEnv = { ...process.env };
 const validTemporaryUrl =
   "https://ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com/generated/image.jpeg";
+const imageBytes = {
+  "image/jpeg": new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+  "image/png": new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  "image/webp": new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+  ]),
+} as const;
 
 function imageResponse(
-  body: BodyInit | null = new Uint8Array([1, 2, 3]),
+  body: BodyInit | null = imageBytes["image/jpeg"],
   options: { contentType?: string; contentLength?: string; status?: number } = {},
 ) {
   return new Response(body, {
@@ -86,6 +93,7 @@ describe("createR2ImageStorage", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -122,6 +130,7 @@ describe("createR2ImageStorage", () => {
     "https://10.0.0.1/image.png",
     "https://169.254.169.254/latest/meta-data",
     "https://example.com/image.png",
+    "https://ark-content-generation-attacker-cn-beijing.tos-cn-beijing.volces.com/image.png",
     "not-a-url",
   ])("rejects unsafe temporary URL %s before fetching", async (url) => {
     const fetchImpl = vi.fn<typeof fetch>();
@@ -138,9 +147,9 @@ describe("createR2ImageStorage", () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        imageResponse(new Uint8Array([1, 2, 3]), {
+        imageResponse(imageBytes["image/jpeg"], {
           contentType: "image/jpeg; charset=binary",
-          contentLength: "3",
+          contentLength: "4",
         }),
       );
     const storage = createR2ImageStorage({ fetchImpl });
@@ -153,11 +162,12 @@ describe("createR2ImageStorage", () => {
     });
     expect(fetchImpl).toHaveBeenCalledWith(validTemporaryUrl, {
       redirect: "error",
+      signal: expect.any(AbortSignal),
     });
     expect(awsMocks.PutObjectCommand).toHaveBeenCalledWith({
       Bucket: "images",
       Key: "images/user-1/unique-id.jpeg",
-      Body: Buffer.from([1, 2, 3]),
+      Body: Buffer.from(imageBytes["image/jpeg"]),
       ContentType: "image/jpeg",
     });
     expect(awsMocks.send).toHaveBeenCalledWith({
@@ -176,7 +186,11 @@ describe("createR2ImageStorage", () => {
     const storage = createR2ImageStorage({
       fetchImpl: vi
         .fn<typeof fetch>()
-        .mockResolvedValue(imageResponse(null, { contentType })),
+        .mockResolvedValue(
+          imageResponse(imageBytes[contentType as keyof typeof imageBytes], {
+            contentType,
+          }),
+        ),
     });
 
     await expect(
@@ -225,20 +239,93 @@ describe("createR2ImageStorage", () => {
     expect(awsMocks.send).not.toHaveBeenCalled();
   });
 
-  it("rejects an actual image body larger than ten MiB", async () => {
+  it("stops and cancels a streamed image as soon as it exceeds ten MiB", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const chunks = [
+      new Uint8Array(6 * 1024 * 1024),
+      new Uint8Array(5 * 1024 * 1024),
+    ];
+    chunks[0].set(imageBytes["image/png"]);
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: chunks[0] })
+      .mockResolvedValueOnce({ done: false, value: chunks[1] });
+    const response = {
+      ok: true,
+      headers: new Headers({ "content-type": "image/png" }),
+      body: {
+        getReader: () => ({ read, cancel, releaseLock: vi.fn() }),
+      },
+    } as unknown as Response;
     const storage = createR2ImageStorage({
-      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
-        imageResponse(new Uint8Array(10 * 1024 * 1024 + 1), {
-          contentType: "image/webp",
-        }),
-      ),
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
     });
 
     await expectR2Error(
       storage.persistTemporaryImage(validTemporaryUrl, "user-1"),
       "too_large",
     );
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledOnce();
     expect(awsMocks.send).not.toHaveBeenCalled();
+  });
+
+  it("enforces the size limit when a response has no readable stream", async () => {
+    const response = {
+      ok: true,
+      headers: new Headers({ "content-type": "image/png" }),
+      body: null,
+      arrayBuffer: vi
+        .fn()
+        .mockResolvedValue(new Uint8Array(10 * 1024 * 1024 + 1).buffer),
+    } as unknown as Response;
+    const storage = createR2ImageStorage({
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
+    });
+
+    await expectR2Error(
+      storage.persistTemporaryImage(validTemporaryUrl, "user-1"),
+      "too_large",
+    );
+  });
+
+  it.each([
+    ["image/jpeg", imageBytes["image/png"]],
+    ["image/png", imageBytes["image/webp"]],
+    ["image/webp", imageBytes["image/jpeg"]],
+  ] as const)("rejects bytes spoofed as %s", async (contentType, body) => {
+    const storage = createR2ImageStorage({
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(imageResponse(body, { contentType })),
+    });
+
+    await expectR2Error(
+      storage.persistTemporaryImage(validTemporaryUrl, "user-1"),
+      "unsupported_type",
+    );
+    expect(awsMocks.send).not.toHaveBeenCalled();
+  });
+
+  it("aborts a stalled download after thirty seconds and clears its timer", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const fetchImpl = vi.fn<typeof fetch>((_url, init) => {
+      signal = init?.signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+    const storage = createR2ImageStorage({ fetchImpl });
+    const result = storage.persistTemporaryImage(validTemporaryUrl, "user-1");
+    const rejection = expectR2Error(result, "download_failed");
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejection;
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("maps network and non-success responses to download_failed", async () => {
@@ -262,8 +349,12 @@ describe("createR2ImageStorage", () => {
   });
 
   it("maps unreadable response bodies to download_failed", async () => {
-    const response = imageResponse();
-    response.arrayBuffer = vi.fn().mockRejectedValue(new Error("stream failed"));
+    const response = {
+      ok: true,
+      headers: new Headers({ "content-type": "image/jpeg" }),
+      body: null,
+      arrayBuffer: vi.fn().mockRejectedValue(new Error("stream failed")),
+    } as unknown as Response;
     const storage = createR2ImageStorage({
       fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
     });
