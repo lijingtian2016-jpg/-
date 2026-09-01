@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArkImageError } from "@/lib/image-generation/ark-image-service";
 import { GeneratedImageRepositoryError } from "@/lib/image-generation/generated-image-repository";
 import { R2ImageError } from "@/lib/storage/r2-image-storage";
-import { createImagePostHandler, type ImageRouteDependencies } from "./route";
+import { createImagePostHandler, type ImageRouteDependencies } from "./image-route-handler";
 
 const userId = "user-server-side";
 const temporaryUrl = "https://ark.example/secret-temporary-url";
