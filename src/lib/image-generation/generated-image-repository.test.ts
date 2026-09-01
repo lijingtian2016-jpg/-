@@ -16,6 +16,22 @@ const record: GeneratedImageRecord = {
 };
 
 describe("createGeneratedImageRepository", () => {
+  it("accepts a PromiseLike-only Supabase query builder", async () => {
+    const result = Promise.resolve({ error: null });
+    const promiseLikeBuilder: PromiseLike<{ error: unknown }> = {
+      then: result.then.bind(result),
+    };
+    const client = {
+      from: (_table: string) => ({
+        insert: (_row: Record<string, string>) => promiseLikeBuilder,
+      }),
+    };
+
+    const repository = createGeneratedImageRepository(client);
+
+    await expect(repository.insert(record)).resolves.toBeUndefined();
+  });
+
   it("inserts exact generated image metadata and resolves successfully", async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const from = vi.fn(() => ({ insert }));

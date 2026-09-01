@@ -18,7 +18,7 @@ export class GeneratedImageRepositoryError extends Error {
 
 type GeneratedImageClient = {
   from(table: string): {
-    insert(row: Record<string, string>): Promise<{ error: unknown }>;
+    insert(row: Record<string, string>): PromiseLike<{ error: unknown }>;
   };
 };
 
