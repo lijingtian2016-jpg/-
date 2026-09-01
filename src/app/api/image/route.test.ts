@@ -63,6 +63,22 @@ async function json(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+const allowedLogKeys = [
+  "durationMs", "errorCategory", "model", "promptLength", "provider",
+  "requestId", "stage", "status", "userId",
+].sort();
+
+function expectSafeLogs(
+  logger: { error: ReturnType<typeof vi.fn> },
+  secrets: string[],
+) {
+  for (const [entry] of logger.error.mock.calls) {
+    expect(Object.keys(entry).sort()).toEqual(allowedLogKeys);
+  }
+  const serialized = JSON.stringify(logger.error.mock.calls);
+  for (const secret of secrets) expect(serialized).not.toContain(secret);
+}
+
 describe("POST /api/image", () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -79,6 +95,46 @@ describe("POST /api/image", () => {
     expect(generate).not.toHaveBeenCalled();
   });
 
+  it("authenticates before reading the request body", async () => {
+    const calls: string[] = [];
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(encoder.encode(JSON.stringify({ prompt: "hello" })));
+        controller.close();
+      },
+    });
+    const originalGetReader = body.getReader.bind(body);
+    vi.spyOn(body, "getReader").mockImplementation((...args) => {
+      calls.push("body");
+      return originalGetReader(...args);
+    });
+    const getUser = vi.fn(async () => {
+      calls.push("auth");
+      return { data: { user: { id: userId } }, error: null };
+    });
+    const { handler } = setup({
+      createSupabaseClient: vi.fn(async () => ({ auth: { getUser } })),
+    });
+    await handler(new Request("http://localhost/api/image", {
+      method: "POST", body, duplex: "half",
+    } as RequestInit));
+    expect(calls.slice(0, 2)).toEqual(["auth", "body"]);
+  });
+
+  it.each(["factory", "getUser"])("returns a stable logged 500 when Supabase %s throws", async (kind) => {
+    const secret = "SUPABASE SECRET ERROR";
+    const logger = { error: vi.fn() };
+    const createSupabaseClient = kind === "factory"
+      ? vi.fn(async () => { throw new Error(secret); })
+      : vi.fn(async () => ({ auth: { getUser: vi.fn(async () => { throw new Error(secret); }) } }));
+    const { handler } = setup({ createSupabaseClient, logger });
+    const response = await handler(request(JSON.stringify({ prompt: "SECRET PROMPT" })));
+    expect(response.status).toBe(500);
+    await expect(json(response)).resolves.toEqual({ error: "图片生成失败，请重试" });
+    expectSafeLogs(logger, [secret, "SECRET PROMPT"]);
+  });
+
   it.each([
     ["invalid JSON", "{"],
     ["missing prompt", JSON.stringify({})],
@@ -90,6 +146,34 @@ describe("POST /api/image", () => {
     expect(response.status).toBe(400);
     await expect(json(response)).resolves.toEqual({ error: "请输入图片描述" });
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized declared body before reading it", async () => {
+    const body = new ReadableStream<Uint8Array>();
+    const getReader = vi.spyOn(body, "getReader");
+    const { handler } = setup();
+    const response = await handler(new Request("http://localhost/api/image", {
+      method: "POST", body, duplex: "half", headers: { "content-length": "20000" },
+    } as RequestInit));
+    expect(response.status).toBe(400);
+    expect(getReader).not.toHaveBeenCalled();
+  });
+
+  it("cancels and rejects a chunked body once it crosses the byte cap", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(10_000));
+        controller.enqueue(new Uint8Array(10_000));
+      },
+      cancel() { cancelled = true; },
+    });
+    const { handler } = setup();
+    const response = await handler(new Request("http://localhost/api/image", {
+      method: "POST", body, duplex: "half",
+    } as RequestInit));
+    expect(response.status).toBe(400);
+    expect(cancelled).toBe(true);
   });
 
   it("trims the prompt and persists the permanent URL in exact order", async () => {
@@ -134,7 +218,7 @@ describe("POST /api/image", () => {
   });
 
   it.each([
-    ["invalid_url", 502, "图片生成失败，请重试"],
+    ["invalid_url", 502, "图片保存失败，请重试"],
     ["download_failed", 502, "图片生成失败，请重试"],
     ["unsupported_type", 502, "图片生成失败，请重试"],
     ["too_large", 502, "图片生成失败，请重试"],
@@ -179,7 +263,7 @@ describe("POST /api/image", () => {
       generate: vi.fn(async () => { throw new Error(secretMessage); }),
     });
     const response = await handler(request(JSON.stringify({ prompt: secretPrompt })));
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(500);
     const responseText = await response.text();
     expect(responseText).not.toContain(secretPrompt);
     expect(responseText).not.toContain(secretMessage);
@@ -193,12 +277,33 @@ describe("POST /api/image", () => {
       requestId: "request-123",
       userId,
       stage: "generate",
-      status: 502,
+      status: 500,
       durationMs: expect.any(Number),
       provider: "volcengine-ark",
       model: "unknown",
       promptLength: secretPrompt.length,
       errorCategory: "unknown",
     });
+    expectSafeLogs(logger, [secretPrompt, secretMessage, temporaryUrl, permanentUrl]);
   });
+
+  it.each(["persist", "record", "cleanup"] as const)(
+    "keeps %s failure logs structured and secret-free",
+    async (stage) => {
+      const secretPrompt = "PRIVATE PROMPT";
+      const secretMessage = "API KEY provider body raw error";
+      const { handler, persistTemporaryImage, insert, deleteObject, logger } = setup();
+      if (stage === "persist") persistTemporaryImage.mockRejectedValueOnce(new Error(secretMessage));
+      if (stage === "record") insert.mockRejectedValueOnce(new Error(secretMessage));
+      if (stage === "cleanup") {
+        insert.mockRejectedValueOnce(new Error(secretMessage));
+        deleteObject.mockRejectedValueOnce(new Error(secretMessage));
+      }
+      await handler(request(JSON.stringify({ prompt: secretPrompt })));
+      expect(logger.error).toHaveBeenCalledTimes(stage === "cleanup" ? 2 : 1);
+      expectSafeLogs(logger, [
+        secretPrompt, secretMessage, temporaryUrl, permanentUrl, "API KEY", "provider body",
+      ]);
+    },
+  );
 });
