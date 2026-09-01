@@ -170,13 +170,16 @@ describe("createR2ImageStorage", () => {
       Body: Buffer.from(imageBytes["image/jpeg"]),
       ContentType: "image/jpeg",
     });
-    expect(awsMocks.send).toHaveBeenCalledWith({
-      kind: "put",
-      input: expect.objectContaining({
-        Key: "images/user-1/unique-id.jpeg",
-        ContentType: "image/jpeg",
-      }),
-    });
+    expect(awsMocks.send).toHaveBeenCalledWith(
+      {
+        kind: "put",
+        input: expect.objectContaining({
+          Key: "images/user-1/unique-id.jpeg",
+          ContentType: "image/jpeg",
+        }),
+      },
+      { abortSignal: expect.any(AbortSignal) },
+    );
   });
 
   it.each([
@@ -379,6 +382,31 @@ describe("createR2ImageStorage", () => {
     );
   });
 
+  it("aborts a stalled R2 upload after thirty seconds and clears its timer", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    awsMocks.send.mockImplementation((_command, options) => {
+      signal = options?.abortSignal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+    const storage = createR2ImageStorage({
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(imageResponse()),
+    });
+    const result = storage.persistTemporaryImage(validTemporaryUrl, "user-1");
+    const rejection = expectR2Error(result, "upload_failed");
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejection;
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("deletes an uploaded object by key", async () => {
     const storage = createR2ImageStorage({ fetchImpl: vi.fn<typeof fetch>() });
 
@@ -389,6 +417,10 @@ describe("createR2ImageStorage", () => {
       Bucket: "images",
       Key: "images/user-1/unique-id.jpeg",
     });
+    expect(awsMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "delete" }),
+      { abortSignal: expect.any(AbortSignal) },
+    );
   });
 
   it("maps R2 delete failures to delete_failed", async () => {
@@ -399,5 +431,27 @@ describe("createR2ImageStorage", () => {
       storage.deleteObject("images/user-1/unique-id.jpeg"),
       "delete_failed",
     );
+  });
+
+  it("aborts a stalled R2 delete after thirty seconds and clears its timer", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    awsMocks.send.mockImplementation((_command, options) => {
+      signal = options?.abortSignal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+    const storage = createR2ImageStorage({ fetchImpl: vi.fn<typeof fetch>() });
+    const result = storage.deleteObject("images/user-1/unique-id.jpeg");
+    const rejection = expectR2Error(result, "delete_failed");
+
+    expect(signal).toBeInstanceOf(AbortSignal);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejection;
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

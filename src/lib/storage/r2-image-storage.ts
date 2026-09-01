@@ -23,6 +23,7 @@ export class R2ImageError extends Error {
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
+const R2_REQUEST_TIMEOUT_MS = 30_000;
 const ARK_IMAGE_HOST =
   "ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com";
 const EXTENSIONS: Readonly<Record<string, string>> = {
@@ -180,6 +181,11 @@ export function createR2ImageStorage(
       }
 
       const objectKey = `images/${userId}/${nanoid()}.${extension}`;
+      const uploadController = new AbortController();
+      const uploadTimeout = setTimeout(
+        () => uploadController.abort(),
+        R2_REQUEST_TIMEOUT_MS,
+      );
       try {
         await client.send(
           new PutObjectCommand({
@@ -188,9 +194,12 @@ export function createR2ImageStorage(
             Body: body,
             ContentType: contentType,
           }),
+          { abortSignal: uploadController.signal },
         );
       } catch {
         throw new R2ImageError("upload_failed");
+      } finally {
+        clearTimeout(uploadTimeout);
       }
 
       return {
@@ -200,12 +209,20 @@ export function createR2ImageStorage(
     },
 
     async deleteObject(objectKey: string) {
+      const deleteController = new AbortController();
+      const deleteTimeout = setTimeout(
+        () => deleteController.abort(),
+        R2_REQUEST_TIMEOUT_MS,
+      );
       try {
         await client.send(
           new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }),
+          { abortSignal: deleteController.signal },
         );
       } catch {
         throw new R2ImageError("delete_failed");
+      } finally {
+        clearTimeout(deleteTimeout);
       }
     },
   };
