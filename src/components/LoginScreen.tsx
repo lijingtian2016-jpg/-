@@ -28,9 +28,7 @@ export const LoginScreen = () => {
     turnstileRef.current?.reset();
     setCaptchaToken(null);
     setMode(nextMode);
-    setError(nextMode === 'register' && !turnstileSiteKey
-      ? '人机验证暂不可用，请稍后重试'
-      : null);
+    setError(!turnstileSiteKey ? '人机验证暂不可用，请稍后重试' : null);
     setPassword('');
     setConfirmPassword('');
   };
@@ -45,13 +43,13 @@ export const LoginScreen = () => {
       return;
     }
 
-    if (mode === 'register' && !turnstileSiteKey) {
+    if (!turnstileSiteKey) {
       setError('人机验证暂不可用，请稍后重试');
       return;
     }
 
-    const registrationToken = captchaToken;
-    if (mode === 'register' && !registrationToken) {
+    const verificationToken = captchaToken;
+    if (!verificationToken) {
       setError('请完成人机验证');
       return;
     }
@@ -60,19 +58,16 @@ export const LoginScreen = () => {
     setIsSubmitting(true);
     try {
       if (mode === 'login') {
-        await login(email.trim(), password);
+        await login(email.trim(), password, verificationToken);
       } else {
-        if (!registrationToken) return;
-        await register(email.trim(), password, registrationToken);
+        await register(email.trim(), password, verificationToken);
       }
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : '';
       setError(mapAuthError(message));
     } finally {
-      if (mode === 'register') {
-        setCaptchaToken(null);
-        turnstileRef.current?.reset();
-      }
+      setCaptchaToken(null);
+      turnstileRef.current?.reset();
       setIsSubmitting(false);
     }
   };
@@ -123,7 +118,7 @@ export const LoginScreen = () => {
 
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
 
-          {!isLogin && turnstileSiteKey && (
+          {turnstileSiteKey && (
             <Turnstile
               onError={() => {
                 setCaptchaToken(null);
@@ -144,7 +139,7 @@ export const LoginScreen = () => {
           )}
 
           <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-fuchsia-500 px-4 py-3 font-semibold text-white shadow-md shadow-rose-200 transition hover:from-rose-600 hover:to-fuchsia-600 focus:outline-none focus:ring-2 focus:ring-fuchsia-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isSubmitting || (!isLogin && (!captchaToken || !turnstileSiteKey))} type="submit">
+            disabled={isSubmitting || !captchaToken || !turnstileSiteKey} type="submit">
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             {submitLabel}
           </button>

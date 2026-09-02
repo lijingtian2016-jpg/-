@@ -58,7 +58,7 @@ describe('LoginScreen', () => {
     expect(screen.queryByLabelText('确认密码')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '还没有账号？立即注册' })).toBeInTheDocument();
-    expect(screen.queryByTestId('turnstile')).not.toBeInTheDocument();
+    expect(screen.getByTestId('turnstile')).toBeInTheDocument();
     expect(container.querySelector('form')).toHaveAttribute('novalidate');
   });
 
@@ -115,7 +115,7 @@ describe('LoginScreen', () => {
 
     await user.click(screen.getByRole('button', { name: '已有账号？返回登录' }));
 
-    expect(turnstileMocks.reset).toHaveBeenCalledTimes(1);
+    expect(turnstileMocks.reset).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('邮箱')).toHaveValue('person@example.com');
     expect(screen.getByLabelText('密码')).toHaveValue('');
     expect(screen.queryByLabelText('确认密码')).not.toBeInTheDocument();
@@ -133,6 +133,7 @@ describe('LoginScreen', () => {
 
     await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
     await user.type(screen.getByLabelText('密码'), 'short');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     await user.click(screen.getByRole('button', { name: '登录' }));
     expect(screen.getByRole('alert')).toHaveTextContent('密码至少需要 8 位');
 
@@ -150,6 +151,7 @@ describe('LoginScreen', () => {
 
     await user.type(screen.getByLabelText('邮箱'), 'invalid-email');
     await user.type(screen.getByLabelText('密码'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     await user.click(screen.getByRole('button', { name: '登录' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('请输入有效的邮箱地址');
@@ -162,6 +164,7 @@ describe('LoginScreen', () => {
 
     await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
     await user.type(screen.getByLabelText('密码'), 'short');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     await user.click(screen.getByRole('button', { name: '登录' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('密码至少需要 8 位');
@@ -183,16 +186,17 @@ describe('LoginScreen', () => {
     expect(authMocks.register).not.toHaveBeenCalled();
   });
 
-  it('logs in with the trimmed email and exact password', async () => {
+  it('logs in with the trimmed email, exact password, and captcha token', async () => {
     const user = userEvent.setup();
     authMocks.login.mockResolvedValue(undefined);
     render(<LoginScreen />);
 
     await user.type(screen.getByLabelText('邮箱'), '  person@example.com  ');
     await user.type(screen.getByLabelText('密码'), ' password123 ');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     await user.click(screen.getByRole('button', { name: '登录' }));
 
-    expect(authMocks.login).toHaveBeenCalledWith('person@example.com', ' password123 ');
+    expect(authMocks.login).toHaveBeenCalledWith('person@example.com', ' password123 ', 'exact-test-token');
   });
 
   it('registers with the trimmed email and exact password', async () => {
@@ -208,7 +212,7 @@ describe('LoginScreen', () => {
     await user.click(screen.getByRole('button', { name: '注册' }));
 
     expect(authMocks.register).toHaveBeenCalledWith('person@example.com', ' password123 ', 'exact-test-token');
-    expect(turnstileMocks.reset).toHaveBeenCalledTimes(1);
+    expect(turnstileMocks.reset).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: '注册' })).toBeDisabled();
   });
 
@@ -267,7 +271,7 @@ describe('LoginScreen', () => {
     await user.click(screen.getByRole('button', { name: '注册' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(turnstileMocks.reset).toHaveBeenCalledTimes(1);
+    expect(turnstileMocks.reset).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: '注册' })).toBeDisabled();
   });
 
@@ -278,6 +282,7 @@ describe('LoginScreen', () => {
 
     await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
     await user.type(screen.getByLabelText('密码'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     await user.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('邮箱或密码错误');
@@ -293,6 +298,7 @@ describe('LoginScreen', () => {
 
     await user.type(screen.getByLabelText('邮箱'), 'person@example.com');
     await user.type(screen.getByLabelText('密码'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'solve challenge' }));
     const submit = screen.getByRole('button', { name: '登录' });
     await user.click(submit);
 

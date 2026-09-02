@@ -119,14 +119,17 @@ describe('AuthProvider', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('logs in with the exact credentials', async () => {
+  it('logs in with the exact credentials and CAPTCHA token', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
-    await act(() => result.current.login('ada@example.com', 'correct horse'));
+    await act(() =>
+      result.current.login('ada@example.com', 'correct horse', 'captcha-token'),
+    );
 
     expect(auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'ada@example.com',
       password: 'correct horse',
+      options: { captchaToken: 'captcha-token' },
     });
   });
 
