@@ -1,4 +1,3 @@
-import { sendDailyLoveLetterToAll } from '@/lib/email'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -13,7 +12,9 @@ export async function GET(request: NextRequest) {
 
   // 第二步：执行任务——给所有用户发情话邮件
   try {
-    await sendDailyLoveLetterToAll()
+    // TODO: 实现 sendDailyLoveLetterToAll() 函数
+    // await sendDailyLoveLetterToAll()
+    
     return NextResponse.json({
       success: true,
       message: '每日情话发送完成',
